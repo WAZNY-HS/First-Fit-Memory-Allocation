@@ -1,118 +1,153 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk, messagebox
 
-# First Fit Memory Allocation Simulation
-# This program simulates the First Fit algorithm for dynamic memory allocation.
+def parse_input(input_str):
+    try:
+        return list(map(int, input_str.split(",")))
+    except ValueError:
+        messagebox.showerror("Error", "Please enter integers separated by commas.")
+        return None
 
-# Function to allocate memory using the First Fit algorithm
-def first_fit(blocks, processes):
-    allocation = [-1] * len(processes)  # Initialize allocation array with -1 (indicating unallocated)
-    original_blocks = blocks[:]  # Keep a copy of the original block sizes for fragmentation calculation
+def first_fit(block_sizes, process_sizes):
+    allocation = [-1] * len(process_sizes)
+    block_summary = [block for block in block_sizes]
 
-    # Iterate through each process to allocate memory
-    for i, process in enumerate(processes):
-        for j, block in enumerate(blocks):
-            # Check if the block can fit the process
-            if process <= block:
-                allocation[i] = j  # Allocate block j to process i
-                blocks[j] -= process  # Reduce the block size by the allocated process size
+    for i, process in enumerate(process_sizes):
+        for j, block in enumerate(block_sizes):
+            if block >= process:
+                allocation[i] = j
+                block_sizes[j] -= process
                 break
 
-    fragments = [original_blocks[i] - blocks[i] for i in range(len(blocks))]  # Calculate fragments
+    return allocation, block_summary
 
-    return allocation, fragments
+def summarize_blocks(block_sizes, block_summary):
+    return [original - remaining for original, remaining in zip(block_summary, block_sizes)]
 
-# Function to handle the UI logic
-def allocate_memory():
-    try:
-        # Get input from user
-        blocks = list(map(int, block_entry.get().split(',')))
-        processes = list(map(int, process_entry.get().split(',')))
+def calculate_internal_fragmentation(block_sizes, allocation, process_sizes):
+    """
+    Calculate internal fragmentation as the unused space within allocated blocks.
+    """
+    internal_frag = 0
+    for i, block_index in enumerate(allocation):
+        if block_index != -1:  # Process is allocated to a block
+            internal_frag += block_sizes[block_index]
+    return internal_frag
 
-        # Perform allocation
-        allocation, fragments = first_fit(blocks, processes)
+def calculate_external_fragmentation(block_sizes, allocation):
+    """
+    Calculate external fragmentation as the total space of all unallocated blocks.
+    """
+    external_frag = sum(block_sizes)
+    return external_frag
 
-        # Prepare results for display
-        result_text = "Process No.\tProcess Size\tBlock No.\n"
-        for i, (process, block) in enumerate(zip(processes, allocation)):
-            if block != -1:
-                result_text += f"{i + 1}\t\t{process}\t\t{block + 1}\n"
-            else:
-                result_text += f"{i + 1}\t\t{process}\t\tNot Allocated\n"
+def display_results():
+    block_input = parse_input(block_entry.get())
+    process_input = parse_input(process_entry.get())
 
-        # Display results
-        result_label.config(text=result_text)
+    if block_input is None or process_input is None:
+        return
 
-        # Update memory status
-        memory_status_text = "Memory Status:\n\n"
-        memory_status_text += "Categories\t\tDetails\n"
-        memory_status_text += "-------------------------\n"
+    block_sizes = block_input.copy()
+    allocation, block_summary = first_fit(block_sizes, process_input)
 
-        # Free Blocks
-        free_blocks = ", ".join([f"Block {idx + 1}: {block} KB" for idx, block in enumerate(blocks)])
-        memory_status_text += f"Free Blocks\t\t{free_blocks}\n"
+    process_summary = summarize_blocks(block_sizes, block_summary)
+    internal_frag = calculate_internal_fragmentation(block_sizes, allocation, process_input)
+    external_frag = calculate_external_fragmentation(block_sizes, allocation)
 
-        # Fragments
-        fragments_detail = ", ".join([f"Block {idx + 1}: {fragment} KB" for idx, fragment in enumerate(fragments)])
-        memory_status_text += f"Fragments\t\t{fragments_detail}\n"
+    result_tree.delete(*result_tree.get_children())
+    for i, process in enumerate(process_input):
+        result_tree.insert("", "end", values=(i + 1, process, allocation[i] + 1 if allocation[i] != -1 else "Not Allocated"))
 
-        # Allocations
-        allocations_detail = "\n".join([
-            f"Process {idx + 1} allocated to Block {block + 1}" if block != -1 else f"Process {idx + 1} not allocated"
-            for idx, block in enumerate(allocation)
-        ])
-        memory_status_text += f"Allocations\t\t{allocations_detail}\n"
+    block_tree.delete(*block_tree.get_children())
+    for i, (original, used) in enumerate(zip(block_summary, process_summary)):
+        block_tree.insert("", "end", values=(i + 1, original, used, block_sizes[i]))
 
-        memory_status_label.config(text=memory_status_text)
+    fragmentation_label.config(text=f"Internal Fragmentation: {internal_frag} | External Fragmentation: {external_frag}")
 
-    except ValueError:
-        messagebox.showerror("Input Error", "Please enter valid integers separated by commas.")
-
-# Function to clear all inputs and results
 def clear_all():
     block_entry.delete(0, tk.END)
     process_entry.delete(0, tk.END)
-    result_label.config(text="")
-    memory_status_label.config(text="")
+    result_tree.delete(*result_tree.get_children())
+    block_tree.delete(*block_tree.get_children())
+    fragmentation_label.config(text="Internal Fragmentation: 0 | External Fragmentation: 0")
 
-# Set up the UI
+# Root configuration
 root = tk.Tk()
-root.title("First Fit Memory Allocation")
-root.configure(bg="#f0f8ff")  # Set background color
+root.title("Memory Management - First Fit Algorithm")
+root.geometry("800x600")
+root.configure(bg="#1E2022")
 
-# Styling options
-label_font = ("Arial", 14, "bold")
-entry_font = ("Arial", 12)
-button_font = ("Arial", 14, "bold")
-result_font = ("Courier", 12)
+# Configure styles
+style = ttk.Style()
+style.theme_use("clam")
 
-# Input for blocks
-block_label = tk.Label(root, text="Enter Block Sizes (comma-separated):", bg="#f0f8ff", font=label_font)
-block_label.pack(pady=5)
-block_entry = tk.Entry(root, width=50, font=entry_font)
-block_entry.pack(pady=5)
+# Treeview styles
+style.configure(
+    "Treeview",
+    background="#4E9F3D",
+    foreground="white",
+    rowheight=25,
+    fieldbackground="#1E5128",
+    font=("Arial", 10),
+)
+style.map(
+    "Treeview",
+    background=[("selected", "#64C4ED")],
+    foreground=[("selected", "black")],
+)
+style.configure("Treeview.Heading", font=("Arial", 11, "bold"), background="#FF6363", foreground="white")
 
-# Input for processes
-process_label = tk.Label(root, text="Enter Process Sizes (comma-separated):", bg="#f0f8ff", font=label_font)
-process_label.pack(pady=5)
-process_entry = tk.Entry(root, width=50, font=entry_font)
-process_entry.pack(pady=5)
+# Button styles
+style.configure("TButton", font=("Arial", 10), padding=5, background="#6A0572", foreground="white")
 
-# Button to perform allocation
-allocate_button = tk.Button(root, text="Allocate Memory", command=allocate_memory, font=button_font, bg="#4caf50", fg="white")
-allocate_button.pack(pady=10)
+frame = tk.Frame(root, bg="#1E2022")
+frame.pack(pady=10)
 
-# Button to clear all results
-clear_button = tk.Button(root, text="Clear All Results", command=clear_all, font=button_font, bg="#f44336", fg="white")
-clear_button.pack(pady=10)
+tk.Label(frame, text="Block Sizes (comma-separated):", font=("Arial", 12), bg="#1E2022", fg="#EAEAEA").grid(row=0, column=0, padx=5, pady=5)
+block_entry = tk.Entry(frame, width=35, font=("Arial", 12), bg="#2E2E2E", fg="white", insertbackground="white")
+block_entry.grid(row=0, column=1, padx=5, pady=5)
 
-# Label to display results
-result_label = tk.Label(root, text="", justify="left", anchor="w", bg="#f0f8ff", font=result_font)
-result_label.pack(pady=10)
+tk.Label(frame, text="Process Sizes (comma-separated):", font=("Arial", 12), bg="#1E2022", fg="#EAEAEA").grid(row=1, column=0, padx=5, pady=5)
+process_entry = tk.Entry(frame, width=35, font=("Arial", 12), bg="#2E2E2E", fg="white", insertbackground="white")
+process_entry.grid(row=1, column=1, padx=5, pady=5)
 
-# Label to display memory status after allocation
-memory_status_label = tk.Label(root, text="", justify="left", anchor="w", bg="#f0f8ff", font=result_font)
-memory_status_label.pack(pady=10)
+button_frame = tk.Frame(root, bg="#1E2022")
+button_frame.pack(pady=10)
 
-# Run the application
+ttk.Button(button_frame, text="Allocate Memory", command=display_results).pack(side=tk.LEFT, padx=5)
+ttk.Button(button_frame, text="Clear All", command=clear_all).pack(side=tk.LEFT, padx=5)
+
+result_frame = tk.Frame(root, bg="#1E2022")
+result_frame.pack(pady=10)
+
+tk.Label(result_frame, text="Process Allocation Results", font=("Arial", 13, "bold"), bg="#1E2022", fg="#F2F2F2").pack()
+result_tree = ttk.Treeview(result_frame, columns=("Process No", "Process Size", "Block No"), show="headings", height=5)
+result_tree.heading("Process No", text="Process No")
+result_tree.heading("Process Size", text="Process Size")
+result_tree.heading("Block No", text="Block No")
+result_tree.pack(side=tk.LEFT, padx=5)
+
+scrollbar = ttk.Scrollbar(result_frame, orient="vertical", command=result_tree.yview)
+result_tree.configure(yscrollcommand=scrollbar.set)
+scrollbar.pack(side=tk.RIGHT, fill="y")
+
+block_frame = tk.Frame(root, bg="#1E2022")
+block_frame.pack(pady=10)
+
+tk.Label(block_frame, text="Block Usage Summary", font=("Arial", 13, "bold"), bg="#1E2022", fg="#F2F2F2").pack()
+block_tree = ttk.Treeview(block_frame, columns=("Block No", "Block Size", "Used", "Remaining"), show="headings", height=5)
+block_tree.heading("Block No", text="Block No")
+block_tree.heading("Block Size", text="Block Size")
+block_tree.heading("Used", text="Used")
+block_tree.heading("Remaining", text="Remaining")
+block_tree.pack(side=tk.LEFT, padx=5)
+
+block_scrollbar = ttk.Scrollbar(block_frame, orient="vertical", command=block_tree.yview)
+block_tree.configure(yscrollcommand=block_scrollbar.set)
+block_scrollbar.pack(side=tk.RIGHT, fill="y")
+
+fragmentation_label = tk.Label(root, text="Internal Fragmentation: 0 | External Fragmentation: 0", font=("Arial", 12), bg="#1E2022", fg="#A9A9A9")
+fragmentation_label.pack(pady=10)
+
 root.mainloop()
